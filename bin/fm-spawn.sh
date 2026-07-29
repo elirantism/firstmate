@@ -225,6 +225,7 @@ fi
 ORCA_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
+SPAWN_RESOURCE_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_SESSION=
 HERDR_PROJECTION_ABORT_TASK_PANE=
@@ -250,6 +251,27 @@ parse_orca_worktree_result() {
     ORCA_TERMINAL=${rest#*$'\t'}
   else
     ORCA_TERMINAL=
+  fi
+}
+
+# Release the endpoint and worktree this spawn already created, for the abort
+# paths that happen after creation but before state/<id>.meta exists as a usable
+# record. Nothing downstream can reap them then: fm-teardown.sh keys off meta, so
+# an unreleased pane/window and a checked-out treehouse worktree would leak with
+# no owner. Orca's terminal and worktree belong to the ORCA_ABORT_CLEANUP block
+# instead, which also owns orca's rescue-record fallback.
+spawn_release_created_resources() {
+  [ "$BACKEND" != orca ] || return 0
+  if [ "$KIND" != secondmate ] && [ -n "${WT:-}" ] && [ "$WT" != "${PROJ_ABS:-}" ] \
+     && [ -d "$WT" ]; then
+    if ! command -v treehouse >/dev/null 2>&1; then
+      echo "warning: treehouse command not found; worktree $WT is still checked out and must be returned manually" >&2
+    elif ! ( cd "$PROJ_ABS" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
+      echo "warning: could not return worktree $WT; return it manually with 'treehouse return --force $WT'" >&2
+    fi
+  fi
+  if [ -n "${T:-}" ]; then
+    fm_backend_kill "$BACKEND" "$T" "${ZELLIJ_TAB_ID:-}" "${W:-}" 2>/dev/null || true
   fi
 }
 
@@ -300,6 +322,10 @@ spawn_abort_cleanup() {
         fi
       fi
     fi
+  fi
+  if [ "$SPAWN_RESOURCE_ABORT_CLEANUP" = 1 ]; then
+    SPAWN_RESOURCE_ABORT_CLEANUP=0
+    spawn_release_created_resources
   fi
   if [ "$SPAWN_TASK_LOCK_HELD" = 1 ]; then
     SPAWN_TASK_LOCK_HELD=0
@@ -1480,6 +1506,10 @@ if {
   :
 else
   echo "error: could not publish metadata for $ID" >&2
+  # The endpoint and worktree are already created at this point, and without a
+  # meta record nothing can ever find them again, so this abort owns releasing
+  # them for every backend.
+  SPAWN_RESOURCE_ABORT_CLEANUP=1
   exit 1
 fi
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0

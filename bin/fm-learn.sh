@@ -206,7 +206,7 @@ fi
 
 SELECTED=$(printf '%s\n' "$SNAPSHOT" | jq -c --arg id "$ID" '[.tasks[] | select(.id == $id)][0] // empty')
 if [ -z "$SELECTED" ]; then
-  echo "fm-learn: no active agent record for '$ID'" >&2
+  echo "fm-learn: no agent record for '$ID'" >&2
   exit 1
 fi
 

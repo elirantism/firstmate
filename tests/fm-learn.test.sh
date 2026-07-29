@@ -256,7 +256,9 @@ test_snapshot_alias_and_invalid_selection() {
   out=$(run_learn "$home" "$fakebin" start missing-agent 2>&1)
   status=$?
   [ "$status" -ne 0 ] || fail "missing agent selection should fail"
-  assert_contains "$out" "no active agent record" "missing selection error was unclear"
+  assert_contains "$out" "no agent record for 'missing-agent'" "missing selection error was unclear"
+  assert_not_contains "$out" "no active agent record" \
+    "missing selection error confused absence with inactivity"
 
   out=$(run_learn "$home" "$fakebin" start ../outside 2>&1)
   status=$?
