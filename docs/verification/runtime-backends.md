@@ -117,6 +117,31 @@ Valid cleanup removed only the exact task-bound target and left the control wind
 The metadata-only validation covers tmux, Herdr, Zellij, Orca, and cmux before backend dispatch.
 Claude, Codex, OpenCode, Pi, pi-signed, Grok, and Kimi share that backend cleanup boundary; their harness-specific hook files and token cleanup run only after it, so no harness needs a separate endpoint parser.
 
+### Primary session targeting
+
+Task windows are created in the captain's current session rather than a separate detached session.
+The attached-client resolution was validated on 2026-07-28 with tmux 3.7b on macOS, including the observed case where the spawning shell has empty `$TMUX` while a server with the captain's attached session exists.
+
+```sh
+tmux list-clients -F '#{client_activity} #{client_session}'
+env -u TMUX -u TMUX_PANE tmux list-clients -F '#{client_activity} #{client_session}' \
+  | sort -rn -k1,1 | head -n1 | cut -d' ' -f2-
+```
+
+Observed shapes:
+
+```text
+1785288039 lets-learn
+lets-learn
+```
+
+The separator is a space because that is what tmux emits verbatim.
+A literal TAB, whether written as `\t` or produced by the shell with `$(printf '\t')`, is rendered by tmux as `_`, so the output arrives as the single unsplittable field `1785288039_lets-learn` and no `cut` can recover the session name; this was confirmed with `od -c` on tmux 3.7b.
+`client_session` may contain spaces, but `client_activity` cannot, so taking every field from the second on preserves a spaced session name, verified against a session literally named `probe one`.
+`client_activity` is an integer epoch, so a numeric reverse sort selects the most recently active attached client, and bare `tmux` reaches the running server on the default socket even with `$TMUX` unset.
+A server with no attached client yields empty output, which is the deterministic trigger for the dedicated detached `firstmate` fallback.
+`tests/fm-backend-tmux-smoke.test.sh` exercises the attached-session resolution and the no-client fallback against a real private-socket server.
+
 ## Herdr
 
 The compatibility floor is protocol 14.

@@ -54,17 +54,50 @@ fm_backend_tmux_send_text_submit() {  # <target> <text> <retries> <enter-sleep> 
   fm_tmux_submit_core "$@"
 }
 
-# fm_backend_tmux_container_ensure: reuse the current tmux session when
-# firstmate itself runs inside tmux, else ensure a dedicated detached
-# "firstmate" session exists. Mirrors fm-spawn.sh's container-ensure block;
-# prints the resolved session name.
+# fm_backend_tmux_primary_session: the captain's CURRENT tmux session - the one
+# the most-recently-active ATTACHED client is viewing. This is how the primary
+# session is resolved when the spawning shell's own $TMUX is empty (fm-spawn can
+# be invoked without $TMUX inherited even though the primary firstmate/captain is
+# attached to a live session). Bare `tmux` reaches the running server on the
+# default socket, exactly like every other call in this adapter. Prints the
+# session name, or nothing when no server is running or no client is attached -
+# in which case there is no primary session to target and the caller falls back.
+# client_activity is an integer epoch, so a numeric reverse sort puts the most
+# recently active client first. The separator must be a character tmux emits
+# verbatim: tmux renders control characters in a format string as `_`, so a
+# literal TAB would come back as part of one unsplittable field. A space is
+# passed through untouched, and because client_activity never contains one,
+# taking every field from the second on keeps a spaced session name intact.
+fm_backend_tmux_primary_session() {
+  tmux list-clients -F '#{client_activity} #{client_session}' 2>/dev/null \
+    | sort -rn -k1,1 | head -n1 | cut -d' ' -f2-
+}
+
+# fm_backend_tmux_container_ensure: resolve the session a new task window is
+# created in, printing its name. Precedence:
+#   1. When the spawning shell is itself inside tmux ($TMUX set), its own current
+#      session (`#S`) - the primary firstmate's session.
+#   2. Otherwise, the captain's CURRENT attached session
+#      (fm_backend_tmux_primary_session). This is the key fix: a spawn shell with
+#      empty $TMUX must still land the window in the session the captain is
+#      actually in, not a separate detached "firstmate" session.
+#   3. Only when neither resolves (no server, or a server with no attached
+#      client) fall back to a dedicated detached "firstmate" session - the
+#      deterministic, fail-closed outside-tmux behavior.
+# Mirrors fm-spawn.sh's container-ensure block.
 fm_backend_tmux_container_ensure() {
+  local primary
   if [ -n "${TMUX:-}" ]; then
     tmux display-message -p '#S'
-  else
-    tmux has-session -t firstmate 2>/dev/null || tmux new-session -d -s firstmate
-    printf 'firstmate'
+    return
   fi
+  primary=$(fm_backend_tmux_primary_session)
+  if [ -n "$primary" ]; then
+    printf '%s' "$primary"
+    return 0
+  fi
+  tmux has-session -t firstmate 2>/dev/null || tmux new-session -d -s firstmate
+  printf 'firstmate'
 }
 
 # fm_backend_tmux_create_task: create the task's window in <proj-abs>,

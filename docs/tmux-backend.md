@@ -22,15 +22,15 @@ For the best visible experience, launch the primary harness inside a tmux sessio
 tmux new -s firstmate
 ```
 
-Crew tasks become windows in that session.
-`tmux display-message -p '#S'` prints its name.
-If the primary harness runs outside tmux, Firstmate creates or reuses a detached session named `firstmate`:
+Each crew task is its own tmux window named `fm-<id>`, created in the captain's **current** session - the one the captain is actually attached to - so a spawned agent appears as a new window (tab) right where the captain is watching.
+The target session is resolved in this order: the spawning shell's own session when it is inside tmux (`$TMUX` set, `tmux display-message -p '#S'`); otherwise the session the most-recently-active attached client is viewing, so a spawn shell that lost `$TMUX` still lands the window in the captain's current session rather than a separate one.
+Only when neither resolves - no server, or a running server with no attached client - does Firstmate fall back to a dedicated detached session named `firstmate`:
 
 ```sh
 tmux attach -t firstmate
 ```
 
-Each task window is named `fm-<id>`.
+List and select task windows in the resolved session:
 
 ```sh
 tmux list-windows -t <session-name>
@@ -40,7 +40,7 @@ tmux select-window -t <session-name>:fm-<id>
 Typing into an attached task window is authoritative direct intervention.
 Routine supervision does not require attachment: `bin/fm-peek.sh <id>` captures a bounded tail and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'` steers the recorded endpoint.
 
-Verify setup by spawning a small task and confirming its `fm-<id>` window appears in the selected session.
+Verify setup by spawning a small task and confirming its `fm-<id>` window appears as a new window in the session you are attached to.
 
 ## Current behavior and safety
 
