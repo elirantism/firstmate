@@ -9,7 +9,8 @@ It is intended for understanding work under way without steering the agent or en
 It calls `bin/fm-fleet-snapshot.sh --json`, the authoritative read-only fleet snapshot, and renders each task metadata row as a candidate with its task kind, project, current state, harness, backend, and endpoint availability.
 The command does not infer current state from the last status event.
 A candidate remains selectable when its endpoint is unavailable so the firstmate can learn from a recorded task that needs recovery.
-Selectability is therefore not the same as liveness: the JSON `active` field is derived from the authoritative record rather than asserted, and is true only when the current state is neither `done` nor `failed` and the recorded endpoint is present.
+Selectability is therefore not the same as liveness: the JSON `active` field is derived from the authoritative record rather than asserted, and is true only when the current state is a known non-terminal state (`working`, `parked`, `paused`, or `blocked`) and the recorded endpoint is present.
+A terminal (`done`, `failed`) record, a record whose state could not be established (`unknown`, for example a task mid-teardown whose worktree is already gone), and a record with an absent or unrecorded endpoint are all reported as not active.
 A candidate that is not active is still listed and can still be selected.
 
 `bin/fm-learn.sh start <agent-id>` opens the first learning-session exposure path.
