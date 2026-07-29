@@ -1,7 +1,7 @@
 # Read-only learning sessions
 
-`/learn` opens a read-only conversation about one active Firstmate agent.
-It is intended for understanding work under way without steering the agent or entering its project files.
+`/learn` opens a read-only conversation about one Firstmate agent record.
+It is intended for understanding an agent's work without steering the agent or entering its project files.
 
 ## Current slice
 
