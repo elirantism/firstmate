@@ -34,6 +34,8 @@ usage: fm-learn.sh list [--json]
 Expose a read-only learning-session view of Firstmate's active agent records.
 
 list prints learning candidates from bin/fm-fleet-snapshot.sh.
+Every candidate is selectable; active is true only for a non-terminal record
+whose recorded endpoint is present.
 start and snapshot print the selected agent's bounded learning context.
 --json prints the machine-readable list or fm-learning-session.v1 contract.
 The selected agent's project files and worktree are never read or changed.
@@ -118,6 +120,10 @@ SNAPSHOT=$(FM_ROOT_OVERRIDE="$FM_ROOT" \
 }
 
 list_json() {
+  # Every task metadata row is listed as a selectable learning candidate. active
+  # is derived from the authoritative current state and endpoint presence: a
+  # terminal (done/failed) record, or one whose recorded endpoint is absent or
+  # unrecorded, stays selectable for learning but is not an active agent.
   printf '%s\n' "$SNAPSHOT" | jq '
     {
       schema:"fm-learning-agent-list.v1",
@@ -127,7 +133,10 @@ list_json() {
         .tasks[]
         | {
             id,
-            active:true,
+            active:(
+              (.current_state.state // "") as $state
+              | $state != "done" and $state != "failed" and (.endpoint.exists == true)
+            ),
             kind,
             project,
             repo:(.backlog.repo // null),

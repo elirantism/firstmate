@@ -102,6 +102,89 @@ test_list_enumerates_snapshot_agents() {
   pass "learning list enumerates active agents from the fleet snapshot"
 }
 
+# A fake tmux that reports an idle pane, and no endpoint at all for gone-agent,
+# so the snapshot yields one terminal record and one endpoint-absent record.
+make_terminal_fakebin() {
+  local fakebin
+  fakebin=$(fm_fakebin "$1")
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *gone-agent*) exit 1 ;;
+esac
+case "${1:-}" in
+  display-message) printf '%%1\n' ;;
+  capture-pane) printf 'ready\n' ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/no-mistakes" "$fakebin/tmux"
+  printf '%s\n' "$fakebin"
+}
+
+write_inactive_fixtures() {
+  local home=$1 done_worktree="$1/projects/done-worktree" gone_worktree="$1/projects/gone-worktree"
+  mkdir -p "$home/data/done-agent" "$home/data/gone-agent" "$done_worktree" "$gone_worktree"
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+- [ ] done-agent - Improve the login flow (repo: alpha) (kind: ship) (since 2026-07-28)
+- [ ] gone-agent - Improve the signup flow (repo: beta) (kind: ship) (since 2026-07-28)
+
+## Queued
+
+## Done
+EOF
+  cat > "$home/state/done-agent.meta" <<EOF
+window=firstmate:fm-done-agent
+worktree=$done_worktree
+project=alpha
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'done: shipped the login flow\n' > "$home/state/done-agent.status"
+  cat > "$home/state/gone-agent.meta" <<EOF
+window=firstmate:fm-gone-agent
+worktree=$gone_worktree
+project=beta
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'working: improving the signup flow\n' > "$home/state/gone-agent.status"
+}
+
+test_active_is_derived_and_inactive_stays_selectable() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/active")
+  write_inactive_fixtures "$home"
+  fakebin=$(make_terminal_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" list --json)
+  printf '%s\n' "$out" | jq -e '
+    (.agents | length) == 2
+      and ((.agents[] | select(.id == "done-agent"))
+           | .current_state.state == "done" and .endpoint.exists == true and .active == false)
+      and ((.agents[] | select(.id == "gone-agent"))
+           | .current_state.state != "done" and .endpoint.exists == false and .active == false)
+  ' >/dev/null || fail "active was not derived from current state and endpoint: $out"
+
+  out=$(run_learn "$home" "$fakebin" start done-agent --json) \
+    || fail "a terminal record stopped being selectable for learning"
+  printf '%s\n' "$out" | jq -e '.selected_agent.id == "done-agent"' >/dev/null \
+    || fail "terminal learning candidate did not expose its context: $out"
+  out=$(run_learn "$home" "$fakebin" start gone-agent --json) \
+    || fail "an endpoint-absent record stopped being selectable for learning"
+  printf '%s\n' "$out" | jq -e '.selected_agent.id == "gone-agent"' >/dev/null \
+    || fail "endpoint-absent learning candidate did not expose its context: $out"
+  pass "active is derived from state and endpoint while every candidate stays selectable"
+}
+
 test_start_is_read_only_and_contains_bounded_context() {
   local home fakebin out before_meta before_status before_brief before_worktree
   home=$(make_home "$TMP_ROOT/start")
@@ -186,6 +269,7 @@ test_adapter_seam_is_shared_by_pi_and_claude() {
 
 test_empty_list_is_explicit
 test_list_enumerates_snapshot_agents
+test_active_is_derived_and_inactive_stays_selectable
 test_start_is_read_only_and_contains_bounded_context
 test_snapshot_alias_and_invalid_selection
 test_adapter_seam_is_shared_by_pi_and_claude
