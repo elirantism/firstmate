@@ -7,11 +7,17 @@
 #   fm-learn.sh snapshot <agent-id> [--json]
 #
 # `list` enumerates every direct-report metadata row in the fresh fleet
-# snapshot as a learning candidate.
+# snapshot as a learning candidate; `agents` is an accepted alias.
 # `start` and `snapshot` expose one selected candidate's bounded context without
-# spawning a process, editing task state, or reading the selected worktree.
-# JSON output is the stable handoff contract for a future separate learner
-# process and persistence adapter.
+# spawning a process, editing task state, or reading the selected worktree;
+# `context` is an accepted alias, and the selected id may also be given as
+# `--agent <agent-id>`.
+# `list --json` emits schema fm-learning-agent-list.v1 and the selected-context
+# commands emit fm-learning-session.v1; both are the stable handoff contract for
+# a future separate learner process and persistence adapter.
+# FM_LEARN_RECORD_LINES bounds each task-record excerpt and defaults to 120
+# lines; a non-numeric or zero value falls back to that default.
+# docs/learn.md owns the operator-facing contract and its safety boundary.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

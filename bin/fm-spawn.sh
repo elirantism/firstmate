@@ -1433,6 +1433,10 @@ fi
 
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
+# state/<id>.meta is the only record every guard, supervision path, and
+# read-only reader counts work from, so a task whose metadata never landed is
+# invisible fleet-wide (docs/subagent-guard.md). Fail the spawn loudly instead
+# of continuing with an absent or truncated record.
 if {
   echo "window=$META_WINDOW"
   echo "endpoint_task_id=$ID"

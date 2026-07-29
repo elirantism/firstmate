@@ -5,7 +5,7 @@ It is intended for understanding work under way without steering the agent or en
 
 ## Current slice
 
-`bin/fm-learn.sh list` is the harness-independent candidate enumeration command.
+`bin/fm-learn.sh list` is the harness-independent candidate enumeration command, printing the human candidate list or, with `--json`, schema `fm-learning-agent-list.v1`.
 It calls `bin/fm-fleet-snapshot.sh --json`, the authoritative read-only fleet snapshot, and renders each task metadata row as a candidate with its task kind, project, current state, harness, backend, and endpoint availability.
 The command does not infer current state from the last status event.
 A candidate remains selectable when its endpoint is unavailable so the firstmate can learn from a recorded task that needs recovery.
@@ -14,10 +14,9 @@ A terminal (`done`, `failed`) record, a record whose state could not be establis
 A candidate that is not active is still listed and can still be selected.
 
 `bin/fm-learn.sh start <agent-id>` opens the first learning-session exposure path.
-The `snapshot` subcommand is an alias for `start`.
 The JSON result has schema `fm-learning-session.v1` and includes the complete fleet snapshot, the selected agent row, its matching backlog record, and bounded metadata, brief, status-event, and report records.
 The human result shows the selected task brief and recent task events with the same read-only boundary.
-`FM_LEARN_RECORD_LINES` bounds each task-record excerpt and defaults to 120 lines.
+`FM_LEARN_RECORD_LINES` bounds each task-record excerpt; the script header owns its default and the exact subcommand and flag spellings.
 
 The core reads task records under the Firstmate home only.
 It does not open project files or selected-agent worktree content, and it never writes any project, task, backlog, status, or learning-session file.
