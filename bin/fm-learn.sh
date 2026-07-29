@@ -33,17 +33,19 @@ esac
 
 usage() {
   cat <<'EOF'
-usage: fm-learn.sh list [--json]
-       fm-learn.sh start <agent-id> [--json]
-       fm-learn.sh snapshot <agent-id> [--json]
+usage: fm-learn.sh list|agents [--json]
+       fm-learn.sh start|snapshot|context <agent-id> [--json]
 
 Expose a read-only learning-session view of Firstmate's active agent records.
 
-list prints learning candidates from bin/fm-fleet-snapshot.sh.
+list prints learning candidates from bin/fm-fleet-snapshot.sh; agents is an
+accepted alias.
 Every candidate is selectable; active is true only for a record in a known
 non-terminal state (working, parked, paused, blocked) with a present endpoint.
-start and snapshot print the selected agent's bounded learning context.
---json prints the machine-readable list or fm-learning-session.v1 contract.
+start, snapshot, and context are aliases that print the selected agent's
+bounded learning context.
+--json prints the machine-readable contract: fm-learning-agent-list.v1 for the
+candidate list, fm-learning-session.v1 for the selected agent's context.
 The selected agent's project files and worktree are never read or changed.
 No learner process or persistence adapter is created in this slice.
 --agent <agent-id> is accepted as an alternate selection spelling.
