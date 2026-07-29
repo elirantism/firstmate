@@ -63,11 +63,14 @@ fm_backend_tmux_send_text_submit() {  # <target> <text> <retries> <enter-sleep> 
 # session name, or nothing when no server is running or no client is attached -
 # in which case there is no primary session to target and the caller falls back.
 # client_activity is an integer epoch, so a numeric reverse sort puts the most
-# recently active client first; the tab field separator keeps a session name that
-# contains spaces intact.
+# recently active client first. The separator must be a character tmux emits
+# verbatim: tmux renders control characters in a format string as `_`, so a
+# literal TAB would come back as part of one unsplittable field. A space is
+# passed through untouched, and because client_activity never contains one,
+# taking every field from the second on keeps a spaced session name intact.
 fm_backend_tmux_primary_session() {
-  tmux list-clients -F "#{client_activity}$(printf '\t')#{client_session}" 2>/dev/null \
-    | sort -rn -k1,1 | head -n1 | cut -f2-
+  tmux list-clients -F '#{client_activity} #{client_session}' 2>/dev/null \
+    | sort -rn -k1,1 | head -n1 | cut -d' ' -f2-
 }
 
 # fm_backend_tmux_container_ensure: resolve the session a new task window is

@@ -29,10 +29,14 @@ wait_for_capture_text() {  # <target> <text> [samples]
 command -v tmux >/dev/null 2>&1 || { echo "skip: tmux not found"; exit 0; }
 REAL_TMUX=$(command -v tmux)
 SOCKET="fm-backend-smoke-$$"
+# A second private socket hosting the client that ATTACHES to $SOCKET, so the
+# attached-session resolution can be exercised against a real client.
+VIEW_SOCKET="fm-backend-smoke-view-$$"
 SHIM_DIR=
 trap cleanup_all EXIT
 
 cleanup_all() {
+  "$REAL_TMUX" -L "$VIEW_SOCKET" kill-server >/dev/null 2>&1 || true
   "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
   [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
 }
@@ -88,7 +92,7 @@ pass "real tmux: fm_backend_tmux_create_task creates a window and refuses a dupl
 # tmux calls onto the host's default socket).
 got=$(
   # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
-  tmux() { [ "$1" = list-clients ] && printf '100\tsession-a\n300\tteam work\n200\tsession-b\n'; return 0; }
+  tmux() { [ "$1" = list-clients ] && printf '100 session-a\n300 team work\n200 session-b\n'; return 0; }
   fm_backend_tmux_primary_session
 )
 [ "$got" = "team work" ] || fail "primary_session must pick the most-recently-active client's session (spaces intact), got '$got'"
@@ -102,7 +106,7 @@ got=$(
 got=$(
   unset TMUX TMUX_PANE
   # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
-  tmux() { [ "$1" = list-clients ] && printf '7\tlets-learn\n'; return 0; }
+  tmux() { [ "$1" = list-clients ] && printf '7 lets-learn\n'; return 0; }
   fm_backend_tmux_container_ensure
 )
 [ "$got" = lets-learn ] || fail "container_ensure with empty \$TMUX must target the attached client's session, got '$got'"
@@ -121,6 +125,47 @@ fallback_session=$(env -u TMUX -u TMUX_PANE bash -c '. "$1/bin/fm-backend.sh"; f
 tmux has-session -t firstmate 2>/dev/null || fail "the fallback must have created the detached 'firstmate' session"
 tmux kill-session -t firstmate 2>/dev/null || true
 pass "real tmux: with no attached client, primary_session is empty and container_ensure creates the 'firstmate' fallback session"
+
+# Real ATTACHED client - the scenario this resolution order exists for: the
+# spawning shell has an empty $TMUX while the captain is attached to a live
+# session. The shell-function stubs above cannot cover it, because they assert
+# against text the test itself printed; only a real server proves what tmux's
+# own `-F` output actually looks like. An attach needs a tty, so the client is
+# manufactured by attaching to this private socket from inside a SECOND private
+# tmux server. The viewer is sized like the smoke session and killed again at
+# the end of the block, so the later capture-bounds assertions still run
+# against an unattached session of the original geometry.
+"$REAL_TMUX" -L "$VIEW_SOCKET" new-session -d -s viewer -x 200 -y 50 \
+  "TERM=xterm-256color '$REAL_TMUX' -L '$SOCKET' attach -t '$SESSION'" \
+  || fail "could not start the viewer server that attaches a real client"
+attached=
+for _ in $(seq 1 100); do
+  attached=$(tmux list-clients -F '#{client_session}' 2>/dev/null | head -n1)
+  [ -n "$attached" ] && break
+  sleep 0.1
+done
+[ "$attached" = "$SESSION" ] || fail "could not manufacture a real attached client on the smoke socket, got '$attached'"
+tmux kill-session -t firstmate 2>/dev/null || true
+# shellcheck disable=SC2016 # $1 expands inside the isolated child shell, not here.
+live_primary=$(env -u TMUX -u TMUX_PANE bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source tmux; fm_backend_tmux_primary_session' _ "$ROOT")
+[ "$live_primary" = "$SESSION" ] \
+  || fail "primary_session must return the real attached client's session name '$SESSION', got '$live_primary'"
+# shellcheck disable=SC2016 # $1 expands inside the isolated child shell, not here.
+live_session=$(env -u TMUX -u TMUX_PANE bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source tmux; fm_backend_tmux_container_ensure' _ "$ROOT")
+[ "$live_session" = "$SESSION" ] \
+  || fail "container_ensure with empty \$TMUX must target the real attached session '$SESSION', got '$live_session'"
+# The resolved name must be a usable target: this is what fm-spawn.sh hands to
+# fm_backend_tmux_create_task as "<session>:fm-<id>".
+fm_backend_tmux_create_task "$live_session" "fm-smoke-attached" "$HOME" \
+  || fail "the resolved attached session '$live_session' is not a usable new-window target"
+tmux list-windows -t "$SESSION" -F '#{window_name}' | grep -qx "fm-smoke-attached" \
+  || fail "the task window did not land in the attached session '$SESSION'"
+if tmux has-session -t firstmate 2>/dev/null; then
+  fail "container_ensure must not create the detached 'firstmate' fallback while a client is attached"
+fi
+tmux kill-window -t "$SESSION:fm-smoke-attached" 2>/dev/null || true
+"$REAL_TMUX" -L "$VIEW_SOCKET" kill-server >/dev/null 2>&1 || true
+pass "real tmux: with a real attached client, container_ensure targets that session and the task window lands there"
 
 # --- send text + Enter -------------------------------------------------------
 
