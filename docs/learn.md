@@ -34,6 +34,9 @@ If a future learner becomes an agent, it must use the existing isolated spawn li
 
 ## Harness entry points
 
-Claude and Pi share the same `/learn` skill at `.agents/skills/learn/SKILL.md`.
-Claude discovers it through the `.claude/skills` symlink, and Pi discovers it through its normal `.agents/skills` loading path.
-No harness-specific extension or runtime backend is required for this slice.
+The learning core in `bin/fm-learn.sh` is harness-independent, and `/learn` is a plain `.agents/skills` entry with no harness-specific extension or runtime backend.
+
+This slice verifies the shared entry path on Claude and Pi only.
+Claude discovers the skill through the `.claude/skills` symlink, and Pi discovers it through its normal `.agents/skills` loading path.
+Other supported harnesses are not verified here: whether `/learn` is discovered and how it is invoked follows each harness's own skill-discovery and invocation conventions, which the [`harness-adapters` skill](../.agents/skills/harness-adapters/SKILL.md) owns.
+The core itself needs no change to reach them.

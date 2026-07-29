@@ -29,6 +29,5 @@ If a future learner becomes an agent, it must use the normal isolated spawn path
 
 ## Adapter boundary
 
-Claude discovers this skill through `.claude/skills`, which points to `.agents/skills`.
-Pi discovers the same skill directory through its normal `.agents/skills` loading path.
 No harness-specific extension or pane command is needed for this slice.
+[`docs/learn.md`](../../../docs/learn.md) "Harness entry points" owns which harness entry paths are verified.
