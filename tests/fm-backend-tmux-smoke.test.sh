@@ -81,26 +81,31 @@ pass "real tmux: fm_backend_tmux_create_task creates a window and refuses a dupl
 # Selection + attached-session logic is exercised with a shell-function tmux
 # that shadows the PATH shim, so multi-client ordering and spaced session names
 # are deterministic without needing a real attached client (which needs a tty).
-(
+# Each override lives inside a command substitution that yields only the
+# resolved value: the shadowing stays scoped, the assertion runs at top level so
+# a wrong result aborts the whole suite, and the PATH shim is never torn down
+# mid-run (a `fail` from a subshell would rm -rf it and drop the remaining real
+# tmux calls onto the host's default socket).
+got=$(
   # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
   tmux() { [ "$1" = list-clients ] && printf '100\tsession-a\n300\tteam work\n200\tsession-b\n'; return 0; }
-  got=$(fm_backend_tmux_primary_session)
-  [ "$got" = "team work" ] || fail "primary_session must pick the most-recently-active client's session (spaces intact), got '$got'"
+  fm_backend_tmux_primary_session
 )
-(
+[ "$got" = "team work" ] || fail "primary_session must pick the most-recently-active client's session (spaces intact), got '$got'"
+got=$(
   export TMUX="fake,1,0"
   # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
   tmux() { [ "$1" = display-message ] && printf 'own-session\n'; return 0; }
-  got=$(fm_backend_tmux_container_ensure)
-  [ "$got" = own-session ] || fail "container_ensure with \$TMUX set must return its own #S, got '$got'"
+  fm_backend_tmux_container_ensure
 )
-(
+[ "$got" = own-session ] || fail "container_ensure with \$TMUX set must return its own #S, got '$got'"
+got=$(
   unset TMUX TMUX_PANE
   # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
   tmux() { [ "$1" = list-clients ] && printf '7\tlets-learn\n'; return 0; }
-  got=$(fm_backend_tmux_container_ensure)
-  [ "$got" = lets-learn ] || fail "container_ensure with empty \$TMUX must target the attached client's session, got '$got'"
+  fm_backend_tmux_container_ensure
 )
+[ "$got" = lets-learn ] || fail "container_ensure with empty \$TMUX must target the attached client's session, got '$got'"
 pass "tmux backend: primary-session resolution prefers own #S then the most-recently-active attached client's session"
 
 # Real-server fallback: on this private socket no client is attached, so an

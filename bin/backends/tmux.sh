@@ -86,7 +86,7 @@ fm_backend_tmux_container_ensure() {
   local primary
   if [ -n "${TMUX:-}" ]; then
     tmux display-message -p '#S'
-    return 0
+    return
   fi
   primary=$(fm_backend_tmux_primary_session)
   if [ -n "$primary" ]; then

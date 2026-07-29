@@ -22,7 +22,7 @@ For the best visible experience, launch the primary harness inside a tmux sessio
 tmux new -s firstmate
 ```
 
-Each crew task is its own tmux window named `fm-<id>`, created in the primary session's **current** session - the one the captain is actually in - so a spawned agent appears as a new window (tab) right where the captain is watching.
+Each crew task is its own tmux window named `fm-<id>`, created in the captain's **current** session - the one the captain is actually attached to - so a spawned agent appears as a new window (tab) right where the captain is watching.
 The target session is resolved in this order: the spawning shell's own session when it is inside tmux (`$TMUX` set, `tmux display-message -p '#S'`); otherwise the session the most-recently-active attached client is viewing, so a spawn shell that lost `$TMUX` still lands the window in the captain's current session rather than a separate one.
 Only when neither resolves - no server, or a running server with no attached client - does Firstmate fall back to a dedicated detached session named `firstmate`:
 
