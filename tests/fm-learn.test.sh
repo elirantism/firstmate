@@ -49,7 +49,12 @@ test_empty_list_is_explicit() {
       and .read_only == true
       and (.agents | length) == 0
   ' >/dev/null || fail "empty learning list was not explicit: $out"
-  pass "learning list reports an explicit empty active-agent set"
+  out=$(run_learn "$home" "$fakebin" list)
+  assert_contains "$out" "No First Mate agent records found." \
+    "empty human learning list did not report an absent record set"
+  assert_not_contains "$out" "No active First Mate agents found." \
+    "empty human learning list confused absent records with inactive ones"
+  pass "learning list reports an explicit empty candidate set in both contracts"
 }
 
 write_agent_fixture() {

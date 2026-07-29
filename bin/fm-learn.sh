@@ -194,7 +194,7 @@ if [ "$COMMAND" = list ]; then
   printf 'Learning candidates (read-only)\n\n'
   printf '%s\n' "$SNAPSHOT" | jq -r '
     if (.tasks | length) == 0 then
-      "No active First Mate agents found."
+      "No First Mate agent records found."
     else
       (.tasks | to_entries[]
        | "\(.key + 1). \(.value.id) [\(.value.kind)] - \(.value.backlog.repo // .value.project // "unknown project") - state \(.value.current_state.state) / \(.value.current_state.source) - \(.value.harness // "unknown harness") / \(.value.backend) - endpoint "
