@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+# Behavior tests for the harness-independent read-only learning-session core.
+set -u
+
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+TMP_ROOT=$(fm_test_tmproot fm-learn)
+LEARN="$ROOT/bin/fm-learn.sh"
+
+make_fakebin() {
+  local fakebin
+  fakebin=$(fm_fakebin "$1")
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  display-message) printf '%%1\n' ;;
+  capture-pane) printf 'work in progress\nesc to interrupt\n' ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/no-mistakes" "$fakebin/tmux"
+  printf '%s\n' "$fakebin"
+}
+
+make_home() {
+  local home=$1
+  mkdir -p "$home/state" "$home/data" "$home/config" "$home/projects"
+  printf '%s\n' "$home"
+}
+
+run_learn() {
+  local home=$1 fakebin=$2
+  shift 2
+  PATH="$fakebin:$PATH" FM_HOME="$home" "$LEARN" "$@"
+}
+
+test_empty_list_is_explicit() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/empty")
+  fakebin=$(make_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" list --json)
+  printf '%s\n' "$out" | jq -e '
+    .schema == "fm-learning-agent-list.v1"
+      and .read_only == true
+      and (.agents | length) == 0
+  ' >/dev/null || fail "empty learning list was not explicit: $out"
+  out=$(run_learn "$home" "$fakebin" list)
+  assert_contains "$out" "No First Mate agent records found." \
+    "empty human learning list did not report an absent record set"
+  assert_not_contains "$out" "No active First Mate agents found." \
+    "empty human learning list confused absent records with inactive ones"
+  pass "learning list reports an explicit empty candidate set in both contracts"
+}
+
+write_agent_fixture() {
+  local home=$1 worktree="$1/projects/agent-worktree"
+  mkdir -p "$home/data/learn-agent" "$worktree"
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+- [ ] learn-agent - Improve the login flow (repo: alpha) (kind: ship) (since 2026-07-28)
+
+## Queued
+
+## Done
+EOF
+  cat > "$home/state/learn-agent.meta" <<EOF
+window=firstmate:fm-learn-agent
+worktree=$worktree
+project=alpha
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'working: implementing login flow\n' > "$home/state/learn-agent.status"
+  cat > "$home/data/learn-agent/brief.md" <<'EOF'
+# Learning fixture
+
+Acceptance criteria: understand the login flow without changing it.
+EOF
+  printf 'private worktree content that must not be read\n' > "$worktree/README.md"
+}
+
+test_list_enumerates_snapshot_agents() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/list")
+  write_agent_fixture "$home"
+  fakebin=$(make_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" list --json)
+  printf '%s\n' "$out" | jq -e '
+    .agents == [
+      (.agents[0]
+       | select(.id == "learn-agent")
+       | select(.active == true)
+       | select(.kind == "ship")
+       | select(.project == "alpha")
+       | select(.backend == "tmux")
+       | select(.current_state.state == "working")
+       | select(.endpoint.exists == true))
+    ]
+  ' >/dev/null || fail "learning list did not expose the authoritative task row: $out"
+  pass "learning list enumerates active agents from the fleet snapshot"
+}
+
+# A fake tmux that reports an idle pane, and no endpoint at all for gone-agent, so
+# the snapshot yields one terminal record, one unestablished-state record whose
+# endpoint is still readable, and one endpoint-absent record.
+make_terminal_fakebin() {
+  local fakebin
+  fakebin=$(fm_fakebin "$1")
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *gone-agent*) exit 1 ;;
+esac
+case "${1:-}" in
+  display-message) printf '%%1\n' ;;
+  capture-pane) printf 'ready\n' ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/no-mistakes" "$fakebin/tmux"
+  printf '%s\n' "$fakebin"
+}
+
+write_inactive_fixtures() {
+  local home=$1 done_worktree="$1/projects/done-worktree" gone_worktree="$1/projects/gone-worktree"
+  mkdir -p "$home/data/done-agent" "$home/data/gone-agent" "$home/data/stale-agent" \
+    "$done_worktree" "$gone_worktree"
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+- [ ] done-agent - Improve the login flow (repo: alpha) (kind: ship) (since 2026-07-28)
+- [ ] gone-agent - Improve the signup flow (repo: beta) (kind: ship) (since 2026-07-28)
+- [ ] stale-agent - Improve the logout flow (repo: gamma) (kind: ship) (since 2026-07-28)
+
+## Queued
+
+## Done
+EOF
+  cat > "$home/state/done-agent.meta" <<EOF
+window=firstmate:fm-done-agent
+worktree=$done_worktree
+project=alpha
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'done: shipped the login flow\n' > "$home/state/done-agent.status"
+  cat > "$home/state/gone-agent.meta" <<EOF
+window=firstmate:fm-gone-agent
+worktree=$gone_worktree
+project=beta
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'working: improving the signup flow\n' > "$home/state/gone-agent.status"
+  cat > "$home/state/stale-agent.meta" <<EOF
+window=firstmate:fm-stale-agent
+worktree=$1/projects/torn-down-worktree
+project=gamma
+harness=codex
+kind=ship
+mode=ship
+yolo=off
+EOF
+  printf 'working: improving the logout flow\n' > "$home/state/stale-agent.status"
+}
+
+test_active_is_derived_and_inactive_stays_selectable() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/active")
+  write_inactive_fixtures "$home"
+  fakebin=$(make_terminal_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" list --json)
+  printf '%s\n' "$out" | jq -e '
+    (.agents | length) == 3
+      and ((.agents[] | select(.id == "done-agent"))
+           | .current_state.state == "done" and .endpoint.exists == true and .active == false)
+      and ((.agents[] | select(.id == "stale-agent"))
+           | .current_state.state == "unknown" and .endpoint.exists == true and .active == false)
+      and ((.agents[] | select(.id == "gone-agent"))
+           | .endpoint.exists == false and .active == false)
+  ' >/dev/null || fail "active was not derived from current state and endpoint: $out"
+
+  local id
+  for id in done-agent stale-agent gone-agent; do
+    out=$(run_learn "$home" "$fakebin" start "$id" --json) \
+      || fail "an inactive record stopped being selectable for learning: $id"
+    printf '%s\n' "$out" | jq -e --arg id "$id" '.selected_agent.id == $id' >/dev/null \
+      || fail "inactive learning candidate did not expose its context: $id: $out"
+  done
+  pass "active requires a known non-terminal state and endpoint while candidates stay selectable"
+}
+
+test_start_is_read_only_and_contains_bounded_context() {
+  local home fakebin out before_meta before_status before_brief before_worktree
+  home=$(make_home "$TMP_ROOT/start")
+  write_agent_fixture "$home"
+  fakebin=$(make_fakebin "$home")
+  before_meta=$(shasum -a 256 "$home/state/learn-agent.meta")
+  before_status=$(shasum -a 256 "$home/state/learn-agent.status")
+  before_brief=$(shasum -a 256 "$home/data/learn-agent/brief.md")
+  before_worktree=$(shasum -a 256 "$home/projects/agent-worktree/README.md")
+
+  out=$(run_learn "$home" "$fakebin" start learn-agent --json)
+  printf '%s\n' "$out" | jq -e '
+    .schema == "fm-learning-session.v1"
+      and .selected_id == "learn-agent"
+      and .selected_agent.id == "learn-agent"
+      and .context.fleet_snapshot.schema == "fm-fleet-snapshot.v1"
+      and .context.task_records.backlog.id == "learn-agent"
+      and .context.task_records.brief.present == true
+      and (.context.task_records.brief.content | contains("understand the login flow"))
+      and .context.task_records.status_log.present == true
+      and .learner.delivery == "inline"
+      and .learner.separate_process == false
+      and .learner.persistence == "none"
+      and .boundary.read_only == true
+      and .boundary.project_files_read == false
+      and .boundary.selected_worktree_read == false
+      and .boundary.task_lifecycle_unchanged == true
+      and .boundary.spawned_agent == false
+  ' >/dev/null || fail "learning session context or boundary contract was wrong: $out"
+  assert_not_contains "$out" "private worktree content that must not be read" \
+    "learning session read selected worktree content"
+
+  [ "$(shasum -a 256 "$home/state/learn-agent.meta")" = "$before_meta" ] \
+    || fail "learning session changed task metadata"
+  [ "$(shasum -a 256 "$home/state/learn-agent.status")" = "$before_status" ] \
+    || fail "learning session changed task status events"
+  [ "$(shasum -a 256 "$home/data/learn-agent/brief.md")" = "$before_brief" ] \
+    || fail "learning session changed task brief"
+  [ "$(shasum -a 256 "$home/projects/agent-worktree/README.md")" = "$before_worktree" ] \
+    || fail "learning session changed the selected worktree"
+  pass "selected learning context is bounded, read-only, and does not read worktree content"
+}
+
+test_snapshot_alias_and_invalid_selection() {
+  local home fakebin out status
+  home=$(make_home "$TMP_ROOT/selection")
+  write_agent_fixture "$home"
+  fakebin=$(make_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" snapshot learn-agent)
+  assert_contains "$out" "Learning session (read-only)" "snapshot alias did not expose a learning session"
+  assert_contains "$out" "Learner process: current Firstmate" "human learning session omitted the process seam"
+  assert_contains "$out" "Persistence: none; Obsidian is not integrated" \
+    "human learning session omitted the persistence seam"
+
+  out=$(run_learn "$home" "$fakebin" start missing-agent 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "missing agent selection should fail"
+  assert_contains "$out" "no agent record for 'missing-agent'" "missing selection error was unclear"
+  assert_not_contains "$out" "no active agent record" \
+    "missing selection error confused absence with inactivity"
+
+  out=$(run_learn "$home" "$fakebin" start ../outside 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "path traversal agent id should fail"
+  assert_contains "$out" "invalid agent id" "unsafe agent id was not refused"
+  pass "learning selection aliases and path-safe errors are covered"
+}
+
+test_help_frames_candidates_as_records() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/help")
+  fakebin=$(make_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" --help)
+  assert_contains "$out" "Firstmate's agent records" \
+    "help text does not describe the view as covering agent records"
+  assert_not_contains "$out" "active agent records" \
+    "help text scopes the view to active records while every candidate is selectable"
+  assert_contains "$out" "Every candidate is selectable" \
+    "help text does not state that every candidate is selectable"
+  pass "help text frames candidates as records without contradicting selectability"
+}
+
+test_adapter_seam_is_shared_by_pi_and_claude() {
+  local skill doc
+  skill="$ROOT/.agents/skills/learn/SKILL.md"
+  doc="$ROOT/docs/learn.md"
+  assert_present "$skill" "learn skill is missing"
+  assert_present "$doc" "learn documentation is missing"
+  assert_grep "user-invocable: true" "$skill" "learn skill is not user invocable"
+  assert_grep "bin/fm-learn.sh list" "$skill" "learn skill does not use the shared list core"
+  assert_grep "bin/fm-learn.sh start <agent-id>" "$skill" "learn skill does not use the shared start core"
+  assert_grep "docs/learn.md" "$skill" \
+    "learn skill does not delegate to the harness entry-point owner"
+  assert_grep "Claude discovers the skill through the \`.claude/skills\` symlink" "$doc" \
+    "learn documentation does not document the Claude adapter seam"
+  assert_grep "Pi discovers it through its normal \`.agents/skills\` loading path" "$doc" \
+    "learn documentation does not document the Pi adapter seam"
+  assert_grep "no First Mate agent records are available" "$skill" \
+    "learn skill does not report an empty candidate set as absent records"
+  assert_not_contains "$(cat "$skill")" "no active agent is available" \
+    "learn skill confuses absent records with inactive agents"
+  assert_grep "description: Open a read-only learning session for one Firstmate agent record" "$skill" \
+    "learn skill does not route on agent records"
+  assert_no_grep "one active Firstmate agent" "$skill" \
+    "learn skill routes only on active agents, excluding selectable done and failed records"
+  [ "$(readlink "$ROOT/.claude/skills")" = "../.agents/skills" ] \
+    || fail "Claude skill directory is not the shared agent skill directory"
+  pass "Pi and Claude share the tested skill entry point without harness-specific spawning"
+}
+
+test_empty_list_is_explicit
+test_list_enumerates_snapshot_agents
+test_active_is_derived_and_inactive_stays_selectable
+test_start_is_read_only_and_contains_bounded_context
+test_snapshot_alias_and_invalid_selection
+test_help_frames_candidates_as_records
+test_adapter_seam_is_shared_by_pi_and_claude
