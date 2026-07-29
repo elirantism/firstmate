@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Open a read-only learning session for one active Firstmate agent. Use when the captain invokes /learn or asks to learn from, inspect, understand, or study an active agent's work without changing it.
+description: Open a read-only learning session for one Firstmate agent record, whether the agent is still working or its task is already done or failed. Use when the captain invokes /learn or asks to learn from, inspect, understand, or study an agent's recorded work without changing it.
 user-invocable: true
 metadata:
   internal: true

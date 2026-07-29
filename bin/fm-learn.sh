@@ -36,7 +36,7 @@ usage() {
 usage: fm-learn.sh list|agents [--json]
        fm-learn.sh start|snapshot|context <agent-id> [--json]
 
-Expose a read-only learning-session view of Firstmate's active agent records.
+Expose a read-only learning-session view of Firstmate's agent records.
 
 list prints learning candidates from bin/fm-fleet-snapshot.sh; agents is an
 accepted alias.

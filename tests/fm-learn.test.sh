@@ -272,6 +272,20 @@ test_snapshot_alias_and_invalid_selection() {
   pass "learning selection aliases and path-safe errors are covered"
 }
 
+test_help_frames_candidates_as_records() {
+  local home fakebin out
+  home=$(make_home "$TMP_ROOT/help")
+  fakebin=$(make_fakebin "$home")
+  out=$(run_learn "$home" "$fakebin" --help)
+  assert_contains "$out" "Firstmate's agent records" \
+    "help text does not describe the view as covering agent records"
+  assert_not_contains "$out" "active agent records" \
+    "help text scopes the view to active records while every candidate is selectable"
+  assert_contains "$out" "Every candidate is selectable" \
+    "help text does not state that every candidate is selectable"
+  pass "help text frames candidates as records without contradicting selectability"
+}
+
 test_adapter_seam_is_shared_by_pi_and_claude() {
   local skill
   skill="$ROOT/.agents/skills/learn/SKILL.md"
@@ -287,6 +301,10 @@ test_adapter_seam_is_shared_by_pi_and_claude() {
     "learn skill does not report an empty candidate set as absent records"
   assert_not_contains "$(cat "$skill")" "no active agent is available" \
     "learn skill confuses absent records with inactive agents"
+  assert_grep "description: Open a read-only learning session for one Firstmate agent record" "$skill" \
+    "learn skill does not route on agent records"
+  assert_no_grep "one active Firstmate agent" "$skill" \
+    "learn skill routes only on active agents, excluding selectable done and failed records"
   [ "$(readlink "$ROOT/.claude/skills")" = "../.agents/skills" ] \
     || fail "Claude skill directory is not the shared agent skill directory"
   pass "Pi and Claude share the tested skill entry point without harness-specific spawning"
@@ -297,4 +315,5 @@ test_list_enumerates_snapshot_agents
 test_active_is_derived_and_inactive_stays_selectable
 test_start_is_read_only_and_contains_bounded_context
 test_snapshot_alias_and_invalid_selection
+test_help_frames_candidates_as_records
 test_adapter_seam_is_shared_by_pi_and_claude
