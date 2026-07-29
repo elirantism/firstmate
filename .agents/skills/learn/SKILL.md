@@ -15,7 +15,7 @@ It uses the shared `bin/fm-learn.sh` core, so Claude and Pi use the same adapter
 
 1. Run `bin/fm-learn.sh list`.
 2. Present the numbered learning candidates with their id, task kind, current state, project, harness, backend, and endpoint availability.
-3. If there are no candidates, say that no active agent is available and stop.
+3. If there are no candidates, say that no First Mate agent records are available and stop.
 4. If the captain did not identify one agent, ask them to choose an id before opening context.
 5. Run `bin/fm-learn.sh start <agent-id>` for the selected candidate.
 6. Use the returned task brief, bounded status events, backlog record, and fleet snapshot to explain the selected agent's work.

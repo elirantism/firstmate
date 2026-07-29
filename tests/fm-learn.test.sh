@@ -283,6 +283,10 @@ test_adapter_seam_is_shared_by_pi_and_claude() {
     "learn skill does not document the Claude adapter seam"
   assert_grep "Pi discovers the same skill directory" "$skill" \
     "learn skill does not document the Pi adapter seam"
+  assert_grep "no First Mate agent records are available" "$skill" \
+    "learn skill does not report an empty candidate set as absent records"
+  assert_not_contains "$(cat "$skill")" "no active agent is available" \
+    "learn skill confuses absent records with inactive agents"
   [ "$(readlink "$ROOT/.claude/skills")" = "../.agents/skills" ] \
     || fail "Claude skill directory is not the shared agent skill directory"
   pass "Pi and Claude share the tested skill entry point without harness-specific spawning"
