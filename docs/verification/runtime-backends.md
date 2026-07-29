@@ -117,6 +117,28 @@ Valid cleanup removed only the exact task-bound target and left the control wind
 The metadata-only validation covers tmux, Herdr, Zellij, Orca, and cmux before backend dispatch.
 Claude, Codex, OpenCode, Pi, pi-signed, Grok, and Kimi share that backend cleanup boundary; their harness-specific hook files and token cleanup run only after it, so no harness needs a separate endpoint parser.
 
+### Primary session targeting
+
+Task windows are created in the captain's current session rather than a separate detached session.
+The attached-client resolution was validated on 2026-07-28 with tmux 3.7b on macOS, including the observed case where the spawning shell has empty `$TMUX` while a server with the captain's attached session exists.
+
+```sh
+tmux list-clients -F "#{client_activity}\t#{client_session}"
+env -u TMUX -u TMUX_PANE tmux list-clients -F "#{client_activity}\t#{client_session}" \
+  | sort -rn -k1,1 | head -n1 | cut -f2-
+```
+
+Observed shapes:
+
+```text
+1785284498	lets-learn
+lets-learn
+```
+
+`client_activity` is an integer epoch, so a numeric reverse sort selects the most recently active attached client, and bare `tmux` reaches the running server on the default socket even with `$TMUX` unset.
+A server with no attached client yields empty output, which is the deterministic trigger for the dedicated detached `firstmate` fallback.
+`tests/fm-backend-tmux-smoke.test.sh` exercises the attached-session resolution and the no-client fallback against a real private-socket server.
+
 ## Herdr
 
 The compatibility floor is protocol 14.

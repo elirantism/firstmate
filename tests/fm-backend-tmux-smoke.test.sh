@@ -73,6 +73,50 @@ if fm_backend_tmux_create_task "$SESSION" "$WINDOW" "$HOME" 2>/dev/null; then
 fi
 pass "real tmux: fm_backend_tmux_create_task creates a window and refuses a duplicate"
 
+# --- primary-session resolution ----------------------------------------------
+# The task window is created in the captain's CURRENT session. Resolution:
+# $TMUX-set -> own #S; else the most-recently-active attached client's session;
+# else a dedicated detached "firstmate" fallback.
+
+# Selection + attached-session logic is exercised with a shell-function tmux
+# that shadows the PATH shim, so multi-client ordering and spaced session names
+# are deterministic without needing a real attached client (which needs a tty).
+(
+  # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
+  tmux() { [ "$1" = list-clients ] && printf '100\tsession-a\n300\tteam work\n200\tsession-b\n'; return 0; }
+  got=$(fm_backend_tmux_primary_session)
+  [ "$got" = "team work" ] || fail "primary_session must pick the most-recently-active client's session (spaces intact), got '$got'"
+)
+(
+  export TMUX="fake,1,0"
+  # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
+  tmux() { [ "$1" = display-message ] && printf 'own-session\n'; return 0; }
+  got=$(fm_backend_tmux_container_ensure)
+  [ "$got" = own-session ] || fail "container_ensure with \$TMUX set must return its own #S, got '$got'"
+)
+(
+  unset TMUX TMUX_PANE
+  # shellcheck disable=SC2329 # invoked indirectly by the sourced fm_backend_tmux_* function.
+  tmux() { [ "$1" = list-clients ] && printf '7\tlets-learn\n'; return 0; }
+  got=$(fm_backend_tmux_container_ensure)
+  [ "$got" = lets-learn ] || fail "container_ensure with empty \$TMUX must target the attached client's session, got '$got'"
+)
+pass "tmux backend: primary-session resolution prefers own #S then the most-recently-active attached client's session"
+
+# Real-server fallback: on this private socket no client is attached, so an
+# empty-$TMUX resolution finds no primary session and must fall back to a
+# dedicated detached "firstmate" session (deterministic, fail-closed).
+tmux kill-session -t firstmate 2>/dev/null || true
+# shellcheck disable=SC2016 # $1 expands inside the isolated child shell, not here.
+empty_primary=$(env -u TMUX -u TMUX_PANE bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source tmux; fm_backend_tmux_primary_session' _ "$ROOT")
+[ -z "$empty_primary" ] || fail "primary_session must be empty when no client is attached, got '$empty_primary'"
+# shellcheck disable=SC2016 # $1 expands inside the isolated child shell, not here.
+fallback_session=$(env -u TMUX -u TMUX_PANE bash -c '. "$1/bin/fm-backend.sh"; fm_backend_source tmux; fm_backend_tmux_container_ensure' _ "$ROOT")
+[ "$fallback_session" = firstmate ] || fail "container_ensure must fall back to 'firstmate' with no attached client, got '$fallback_session'"
+tmux has-session -t firstmate 2>/dev/null || fail "the fallback must have created the detached 'firstmate' session"
+tmux kill-session -t firstmate 2>/dev/null || true
+pass "real tmux: with no attached client, primary_session is empty and container_ensure creates the 'firstmate' fallback session"
+
 # --- send text + Enter -------------------------------------------------------
 
 # A newly-created interactive shell can exist before its startup files and line
