@@ -287,16 +287,20 @@ test_help_frames_candidates_as_records() {
 }
 
 test_adapter_seam_is_shared_by_pi_and_claude() {
-  local skill
+  local skill doc
   skill="$ROOT/.agents/skills/learn/SKILL.md"
+  doc="$ROOT/docs/learn.md"
   assert_present "$skill" "learn skill is missing"
+  assert_present "$doc" "learn documentation is missing"
   assert_grep "user-invocable: true" "$skill" "learn skill is not user invocable"
   assert_grep "bin/fm-learn.sh list" "$skill" "learn skill does not use the shared list core"
   assert_grep "bin/fm-learn.sh start <agent-id>" "$skill" "learn skill does not use the shared start core"
-  assert_grep 'Claude discovers this skill through `.claude/skills`' "$skill" \
-    "learn skill does not document the Claude adapter seam"
-  assert_grep "Pi discovers the same skill directory" "$skill" \
-    "learn skill does not document the Pi adapter seam"
+  assert_grep "docs/learn.md" "$skill" \
+    "learn skill does not delegate to the harness entry-point owner"
+  assert_grep "Claude discovers the skill through the \`.claude/skills\` symlink" "$doc" \
+    "learn documentation does not document the Claude adapter seam"
+  assert_grep "Pi discovers it through its normal \`.agents/skills\` loading path" "$doc" \
+    "learn documentation does not document the Pi adapter seam"
   assert_grep "no First Mate agent records are available" "$skill" \
     "learn skill does not report an empty candidate set as absent records"
   assert_not_contains "$(cat "$skill")" "no active agent is available" \
